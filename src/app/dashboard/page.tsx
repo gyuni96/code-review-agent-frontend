@@ -4,10 +4,37 @@ import { useSession } from "next-auth/react";
 import { useEffect } from "react";
 import { redirect } from "next/navigation";
 import { useRepositories } from "@/hooks/useRepositories";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toggleRepository } from "@/api/backend";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const { data: repos, isLoading, error } = useRepositories();
+  const queryClient = useQueryClient();
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ repo, isActive }: { repo: any; isActive: boolean }) =>
+      toggleRepository(session?.accessToken as string, {
+        github_repo_id: repo.id,
+        full_name: repo.full_name,
+        is_active: isActive,
+      }),
+    onSuccess: () => {
+      // Invalidate and refetch the repositories
+      queryClient.invalidateQueries({ queryKey: ["repositories", session?.accessToken] });
+    },
+    onError: (err) => {
+      alert("레포지토리 상태 변경에 실패했습니다. 백엔드 서버를 확인해주세요.");
+      console.error(err);
+    }
+  });
+
+  const handleToggle = (repo: any) => {
+    // repo.isActive is set to false by default from github unless we mix backend state.
+    // Assuming backend state is properly managed later, we toggle the current perceived state.
+    const newActiveState = !repo.isActive; 
+    toggleMutation.mutate({ repo, isActive: newActiveState });
+  };
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -66,13 +93,15 @@ export default function Dashboard() {
                   )}
                 </div>
                 <button
+                  onClick={() => handleToggle(repo)}
+                  disabled={toggleMutation.isPending}
                   className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:outline-none ${
                     repo.isActive
                       ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100"
                       : "bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black"
-                  }`}
+                  } ${toggleMutation.isPending ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  {repo.isActive ? "비활성화" : "활성화"}
+                  {toggleMutation.isPending ? "처리 중..." : repo.isActive ? "비활성화" : "활성화"}
                 </button>
               </li>
             ))}

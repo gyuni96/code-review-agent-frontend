@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
+import { syncUser } from "@/api/backend";
 
 const handler = NextAuth({
   providers: [
@@ -13,9 +14,30 @@ const handler = NextAuth({
       },
     }),
   ],
+  debug: process.env.NODE_ENV === "development",
   callbacks: {
     async signIn({ user, account, profile, email, credentials }) {
-      console.log("signIn callback called with:", { user, account, profile, email, credentials });
+      console.log("signIn callback called with:", {
+        user: user?.email,
+        provider: account?.provider,
+      });
+
+      if (!account?.access_token) {
+        console.error("No access token provided from GitHub provider");
+        return false;
+      }
+
+      try {
+        await syncUser({
+          githubId: profile?.id?.toString() || "",
+          email: user?.email || undefined,
+          username: (profile as any)?.login || user?.name || "unknown",
+          avatarUrl: user?.image || undefined,
+          accessToken: account.access_token,
+        });
+      } catch (error) {
+        console.error("Failed to sync user data with backend:", error);
+      }
 
       return true;
     },
